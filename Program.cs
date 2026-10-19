@@ -75,6 +75,17 @@ namespace BlazorApp2
         )";
                 createUsers.ExecuteNonQuery();
 
+                var createLoans = connection.CreateCommand();
+                createLoans.CommandText = @"
+    CREATE TABLE IF NOT EXISTS Loans (
+        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+        BookId INTEGER NOT NULL,
+        Username TEXT NOT NULL,
+        BorrowedAt TEXT NOT NULL,
+        ReturnedAt TEXT NULL
+    )";
+                createLoans.ExecuteNonQuery();
+
                 var countCommand = connection.CreateCommand();
                 countCommand.CommandText = "SELECT COUNT(*) FROM Users";
                 long userCount = (long)countCommand.ExecuteScalar()!;
@@ -108,7 +119,6 @@ namespace BlazorApp2
                     seedCommand2.ExecuteNonQuery();
                 }
             }
-
             app.Run();
         }
     }

@@ -6,163 +6,320 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Cryptography
 
-
 <h3>BookCatalog</h3>
 
 <p style="color: @(isError ? "red" : "black")">@statusmessage</p>
 
+<AuthorizeView Context="userContext">
+    <Authorized>
+        <p>Logged in as: <strong>@userContext.User.Identity?.Name</strong></p>
+        <a href="/logout">Logout</a>
+    </Authorized>
+</AuthorizeView>
+
 <AuthorizeView Roles="Bibliotekar" Context="bibContext">
-	<Authorized>
-		<EditForm Model="newBook" OnSubmit="HandleAdd">
-			<InputText @bind-Value="newBook.Title" placeholder="Title" />
-			<InputText @bind-Value="newBook.Author" placeholder="Author" />
-			<InputNumber @bind-Value="newBook.Total" placeholder="Total" />
-			<button type="submit">Add Book</button>
-		</EditForm>
-	</Authorized>
+    <Authorized>
+        <EditForm Model="newBook" OnSubmit="HandleAdd">
+            <InputText @bind-Value="newBook.Title" placeholder="Title" />
+            <InputText @bind-Value="newBook.Author" placeholder="Author" />
+            <InputNumber @bind-Value="newBook.Total" placeholder="Total" />
+            <button type="submit">Add Book</button>
+        </EditForm>
+    </Authorized>
 </AuthorizeView>
 
 <table>
-	<thead>
-		<tr>
-			<th>Id</th>
-			<th>Title</th>
-			<th>Author</th>
-			<th>Total</th>
-			<th>Available</th>
-		</tr>
-	</thead>
-	<tbody>
-		@foreach (var book in books)
-		{
-			<tr>
-				<td>@book.Id</td>
-				<td>@book.Title</td>
-				<td>@book.Author</td>
-				<td>@book.Total</td>
-				<td>@book.Available</td>
-			</tr>
-		}
-	</tbody>
+    <thead>
+        <tr>
+            <th>Id</th>
+            <th>Title</th>
+            <th>Author</th>
+            <th>Total</th>
+            <th>Available</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var book in books)
+        {
+            <tr>
+                <td>@book.Id</td>
+                <td>@book.Title</td>
+                <td>@book.Author</td>
+                <td>@book.Total</td>
+                <td>@book.Available</td>
+                <td>
+                    <AuthorizeView Roles="Elev" Context="elevContext">
+                        <Authorized>
+                            @if (book.Available > 0)
+                            {
+                                <button @onclick="() => HandleBorrow(book.Id)">Borrow</button>
+                            }
+                            else
+                            {
+                                <span>Unavailable</span>
+                            }
+                        </Authorized>
+                    </AuthorizeView>
+                </td>
+            </tr>
+        }
+    </tbody>
 </table>
+
+<AuthorizeView Roles="Elev" Context="myLoansContext">
+    <Authorized>
+        <h4>My Borrowed Books</h4>
+        @if (myLoans.Count == 0)
+        {
+            <p>You have no active loans.</p>
+        }
+        else
+        {
+            <table>
+                <thead>
+                    <tr><th>Book</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var loan in myLoans)
+                    {
+                        var loanedBook = books.FirstOrDefault(b => b.Id == loan.BookId);
+                        <tr>
+                            <td>@loanedBook?.Title</td>
+                            <td><button @onclick="() => HandleReturn(loan.LoanId, loan.BookId)">Return</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </Authorized>
+</AuthorizeView>
+
 @code {
 
-	private string statusmessage = "Initializing database...";
+    [Inject]
+    private AuthenticationStateProvider AuthProvider { get; set; } = default!;
 
-	private void InitializeDatabase()
-	{
-		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
-		connection.Open();
+    private string statusmessage = "Initializing database...";
+    private bool isError = false;
+    private Book newBook = new Book();
+    private List<Book> books = new List<Book>();
+    private List<(int LoanId, int BookId)> myLoans = new();
 
-		var command = connection.CreateCommand();
-			command.CommandText = @"
-				CREATE TABLE IF NOT EXISTS Books (
-					Id INTEGER PRIMARY KEY AUTOINCREMENT,
-					Title TEXT NOT NULL,
-					Author TEXT NOT NULL,
-					Total INTEGER NOT NULL,
-					Available INTEGER NOT NULL
-				)";
-		command.ExecuteNonQuery();
-		statusmessage = "Database initialized.";
-	}
+    private void InitializeDatabase()
+    {
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
 
-	private void Users()
-	{
-		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
-		connection.Open();
-		var command = connection.CreateCommand();
-		command.CommandText = @"
-			CREATE TABLE IF NOT EXISTS Users (
-				Id INTEGER PRIMARY KEY AUTOINCREMENT,
-				Name TEXT NOT NULL,
-				PasswordHash TEXT NOT NULL,
-				Salt TEXT NOT NULL,
-				Role TEXT NOT NULL
-			)";
-		command.ExecuteNonQuery();
-	}
+        var command = connection.CreateCommand();
+        command.CommandText = @"
+            CREATE TABLE IF NOT EXISTS Books (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Title TEXT NOT NULL,
+                Author TEXT NOT NULL,
+                Total INTEGER NOT NULL,
+                Available INTEGER NOT NULL
+            )";
+        command.ExecuteNonQuery();
+        statusmessage = "Database initialized.";
+    }
 
-	private void AddBook(string title, string author, int total, int available)
-	{
-		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
-		connection.Open();
-		var command = connection.CreateCommand();
-		command.CommandText = @"
-			INSERT INTO Books (Title, Author, Total, Available)
-			VALUES ($title, $author, $total, $available)";
-		command.Parameters.AddWithValue("$title", title);
-		command.Parameters.AddWithValue("$author", author);
-		command.Parameters.AddWithValue("$total", total);
-		command.Parameters.AddWithValue("$available", available);
-		command.ExecuteNonQuery();
-	}
+    private void Users()
+    {
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
+        var command = connection.CreateCommand();
+        command.CommandText = @"
+            CREATE TABLE IF NOT EXISTS Users (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                PasswordHash TEXT NOT NULL,
+                Salt TEXT NOT NULL,
+                Role TEXT NOT NULL
+            )";
+        command.ExecuteNonQuery();
+    }
 
-	private List<Book> GetBooks()
-	{
-		var books = new List<Book>();
-		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
-		connection.Open();
-		var command = connection.CreateCommand();
-		command.CommandText = "SELECT Id, Title, Author, Total, Available FROM Books";
-		using var reader = command.ExecuteReader();
-		while (reader.Read())
-		{
-			var book = new Book
-			{
-				Id = reader.GetInt32(0),
-				Title = reader.GetString(1),
-				Author = reader.GetString(2),
-				Total = reader.GetInt32(3),
-				Available = reader.GetInt32(4)
-			};
-			books.Add(book);
-		}
-		return books;
-	}
-	
-	private Book newBook = new Book();
+    private void AddBook(string title, string author, int total, int available)
+    {
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
+        var command = connection.CreateCommand();
+        command.CommandText = @"
+            INSERT INTO Books (Title, Author, Total, Available)
+            VALUES ($title, $author, $total, $available)";
+        command.Parameters.AddWithValue("$title", title);
+        command.Parameters.AddWithValue("$author", author);
+        command.Parameters.AddWithValue("$total", total);
+        command.Parameters.AddWithValue("$available", available);
+        command.ExecuteNonQuery();
+    }
 
-	private bool isError = false;
+    private List<Book> GetBooks()
+    {
+        var result = new List<Book>();
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT Id, Title, Author, Total, Available FROM Books";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new Book
+            {
+                Id = reader.GetInt32(0),
+                Title = reader.GetString(1),
+                Author = reader.GetString(2),
+                Total = reader.GetInt32(3),
+                Available = reader.GetInt32(4)
+            });
+        }
+        return result;
+    }
 
-	private void HandleAdd()
-	{
-		if (!string.IsNullOrWhiteSpace(newBook.Title) && !string.IsNullOrWhiteSpace(newBook.Author) && newBook.Total > 0)
-		{
-			newBook.Available = newBook.Total; // Set available to total when adding a new book
-			AddBook(newBook.Title, newBook.Author, newBook.Total, newBook.Available);
-			books = GetBooks(); // Refresh the list of books
-			newBook = new Book(); // Reset the form
-			statusmessage = "Book added successfully.";
-			isError = false;
-		}
-		else
-		{
-			statusmessage = "ERROR: - Please fill in all fields and ensure Total is greater than 0.";
-			isError = true;
-		}
-	}
+    private bool BorrowBook(int bookId, string username)
+    {
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
 
-	private static string HashPassword(string password, string salt)
-	{
-		byte[] saltBytes = Convert.FromBase64String(salt);
-		using var pbkdf2 = new Rfc2898DeriveBytes(password, saltBytes, 100_000, HashAlgorithmName.SHA256);
-		return Convert.ToBase64String(pbkdf2.GetBytes(32));
-	}
+        var updateCommand = connection.CreateCommand();
+        updateCommand.CommandText = @"
+            UPDATE Books
+            SET Available = Available - 1
+            WHERE Id = $bookId AND Available > 0";
+        updateCommand.Parameters.AddWithValue("$bookId", bookId);
+        int rowsAffected = updateCommand.ExecuteNonQuery();
 
-	private static bool VerifyPassword(string password, string salt, string hash)
-	{
-		var computedHash = HashPassword(password, salt);
-		return computedHash == hash;
-	}
+        if (rowsAffected == 0)
+        {
+            return false;
+        }
 
-	private List<Book> books = new List<Book>();
+        var insertCommand = connection.CreateCommand();
+        insertCommand.CommandText = @"
+            INSERT INTO Loans (BookId, Username, BorrowedAt)
+            VALUES ($bookId, $username, $borrowedAt)";
+        insertCommand.Parameters.AddWithValue("$bookId", bookId);
+        insertCommand.Parameters.AddWithValue("$username", username);
+        insertCommand.Parameters.AddWithValue("$borrowedAt", DateTime.Now.ToString("o"));
+        insertCommand.ExecuteNonQuery();
 
-	protected override void OnInitialized()
-	{
-		InitializeDatabase();
-		Users();
-		statusmessage = "Database initialized and test user seeded.";
-		books = GetBooks();
-	}
+        return true;
+    }
+
+    private List<(int LoanId, int BookId)> GetActiveLoans(string username)
+    {
+        var loans = new List<(int, int)>();
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT Id, BookId FROM Loans WHERE Username = $username AND ReturnedAt IS NULL";
+        command.Parameters.AddWithValue("$username", username);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            loans.Add((reader.GetInt32(0), reader.GetInt32(1)));
+        }
+        return loans;
+    }
+
+    private void ReturnBook(int loanId, int bookId)
+    {
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
+
+        var updateLoan = connection.CreateCommand();
+        updateLoan.CommandText = @"
+            UPDATE Loans
+            SET ReturnedAt = $returnedAt
+            WHERE Id = $loanId";
+        updateLoan.Parameters.AddWithValue("$returnedAt", DateTime.Now.ToString("o"));
+        updateLoan.Parameters.AddWithValue("$loanId", loanId);
+        updateLoan.ExecuteNonQuery();
+
+        var updateBook = connection.CreateCommand();
+        updateBook.CommandText = @"
+            UPDATE Books
+            SET Available = Available + 1
+            WHERE Id = $bookId";
+        updateBook.Parameters.AddWithValue("$bookId", bookId);
+        updateBook.ExecuteNonQuery();
+    }
+
+    private void HandleAdd()
+    {
+        if (!string.IsNullOrWhiteSpace(newBook.Title) && !string.IsNullOrWhiteSpace(newBook.Author) && newBook.Total > 0)
+        {
+            newBook.Available = newBook.Total;
+            AddBook(newBook.Title, newBook.Author, newBook.Total, newBook.Available);
+            books = GetBooks();
+            newBook = new Book();
+            statusmessage = "Book added successfully.";
+            isError = false;
+        }
+        else
+        {
+            statusmessage = "ERROR: - Please fill in all fields and ensure Total is greater than 0.";
+            isError = true;
+        }
+    }
+
+    private async Task HandleBorrow(int bookId)
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var username = authState.User.Identity?.Name ?? "";
+
+        bool success = BorrowBook(bookId, username);
+        if (success)
+        {
+            statusmessage = "Book borrowed successfully.";
+            isError = false;
+        }
+        else
+        {
+            statusmessage = "ERROR: - Book is no longer available.";
+            isError = true;
+        }
+
+        books = GetBooks();
+        await LoadMyLoans();
+    }
+
+    private async Task LoadMyLoans()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var username = authState.User.Identity?.Name ?? "";
+        myLoans = GetActiveLoans(username);
+    }
+
+    private async Task HandleReturn(int loanId, int bookId)
+    {
+        ReturnBook(loanId, bookId);
+        books = GetBooks();
+        await LoadMyLoans();
+        statusmessage = "Book returned successfully.";
+        isError = false;
+    }
+
+    private static string HashPassword(string password, string salt)
+    {
+        byte[] saltBytes = Convert.FromBase64String(salt);
+        using var pbkdf2 = new Rfc2898DeriveBytes(password, saltBytes, 100_000, HashAlgorithmName.SHA256);
+        return Convert.ToBase64String(pbkdf2.GetBytes(32));
+    }
+
+    private static bool VerifyPassword(string password, string salt, string hash)
+    {
+        var computedHash = HashPassword(password, salt);
+        return computedHash == hash;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        InitializeDatabase();
+        Users();
+        statusmessage = "Database initialized and test user seeded.";
+        books = GetBooks();
+        await LoadMyLoans();
+    }
 }
