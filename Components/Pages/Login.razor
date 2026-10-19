@@ -1,0 +1,87 @@
+﻿@page "/login"
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Data.Sqlite
+@using System.Security.Claims
+@using System.Security.Cryptography
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject IHttpContextAccessor HttpContextAccessor
+@inject NavigationManager NavigationManager
+
+<h3>Login</h3>
+
+<EditForm Model="loginModel" FormName="login" OnSubmit="HandleLogin" method="post">
+    <InputText @bind-Value="loginModel.Username" placeholder="Username" />
+    <InputText @bind-Value="loginModel.Password" placeholder="Password" type="password" />
+    <button type="submit">Login</button>
+</EditForm>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <p style="color: red;">@errorMessage</p>
+}
+
+@code {
+    [SupplyParameterFromForm]
+    private LoginModel loginModel { get; set; } = new();
+
+    private string? errorMessage;
+
+    private async Task HandleLogin()
+    {
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT Id, Name, PasswordHash, Salt, Role FROM Users WHERE Name = $name";
+        command.Parameters.AddWithValue("$name", loginModel.Username);
+        using var reader = command.ExecuteReader();
+
+        if (reader.Read())
+        {
+            var name = reader.GetString(1);
+            var passwordHash = reader.GetString(2);
+            var salt = reader.GetString(3);
+            var role = reader.GetString(4);
+
+            if (VerifyPassword(loginModel.Password, salt, passwordHash))
+            {
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.Name, name),
+                    new Claim(ClaimTypes.Role, role)
+                };
+                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var principal = new ClaimsPrincipal(identity);
+                await HttpContextAccessor.HttpContext!.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+                NavigationManager.NavigateTo("/bookcatalog", forceLoad: true);
+            }
+            else
+            {
+                errorMessage = "Invalid username or password.";
+            }
+        }
+        else
+        {
+            errorMessage = "Invalid username or password.";
+        }
+    }
+
+    private static string HashPassword(string password, string salt)
+    {
+        byte[] saltBytes = Convert.FromBase64String(salt);
+        using var pbkdf2 = new Rfc2898DeriveBytes(password, saltBytes, 100_000, HashAlgorithmName.SHA256);
+        return Convert.ToBase64String(pbkdf2.GetBytes(32));
+    }
+
+    private static bool VerifyPassword(string password, string salt, string hash)
+    {
+        var computedHash = HashPassword(password, salt);
+        return computedHash == hash;
+    }
+
+    private class LoginModel
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

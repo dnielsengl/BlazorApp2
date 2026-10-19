@@ -2,6 +2,10 @@
 @rendermode InteractiveServer
 @using Microsoft.Data.Sqlite
 @using BlazorApp2.Data
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Cryptography
+
 
 <h3>BookCatalog</h3>
 
@@ -39,6 +43,7 @@
 </table>
 
 @code {
+
 	private string statusmessage = "Initializing database...";
 
 	private void InitializeDatabase()
@@ -57,6 +62,22 @@
 				)";
 		command.ExecuteNonQuery();
 		statusmessage = "Database initialized.";
+	}
+
+	private void Users()
+	{
+		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+		connection.Open();
+		var command = connection.CreateCommand();
+		command.CommandText = @"
+			CREATE TABLE IF NOT EXISTS Users (
+				Id INTEGER PRIMARY KEY AUTOINCREMENT,
+				Name TEXT NOT NULL,
+				PasswordHash TEXT NOT NULL,
+				Salt TEXT NOT NULL,
+				Role TEXT NOT NULL
+			)";
+		command.ExecuteNonQuery();
 	}
 
 	private void AddBook(string title, string author, int total, int available)
@@ -119,11 +140,57 @@
 		}
 	}
 
+	private static string HashPassword(string password, string salt)
+	{
+		byte[] saltBytes = Convert.FromBase64String(salt);
+		using var pbkdf2 = new Rfc2898DeriveBytes(password, saltBytes, 100_000, HashAlgorithmName.SHA256);
+		return Convert.ToBase64String(pbkdf2.GetBytes(32));
+	}
+
+	private static bool VerifyPassword(string password, string salt, string hash)
+	{
+		var computedHash = HashPassword(password, salt);
+		return computedHash == hash;
+	}
+
 	private List<Book> books = new List<Book>();
+
+	private void seedtestuser()
+	{
+		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+		connection.Open();
+
+		var countCommand = connection.CreateCommand();
+		countCommand.CommandText = "SELECT COUNT(*) FROM Users";
+		long count = (long)countCommand.ExecuteScalar();
+
+		if (count > 0)
+		{
+			return; // Der findes allerede brugere, spring seedingen over
+		}
+
+		var command = connection.CreateCommand();
+		command.CommandText = @"
+        INSERT INTO Users (Name, PasswordHash, Salt, Role)
+        VALUES ($name, $passwordHash, $salt, $role)";
+
+		string salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+		string passwordHash = HashPassword("1234", salt);
+
+		command.Parameters.AddWithValue("$name", "elev1");
+		command.Parameters.AddWithValue("$passwordHash", passwordHash);
+		command.Parameters.AddWithValue("$salt", salt);
+		command.Parameters.AddWithValue("$role", "Elev");
+
+		command.ExecuteNonQuery();
+	}
 
 	protected override void OnInitialized()
 	{
 		InitializeDatabase();
+		Users();
+		seedtestuser();
+		statusmessage = "Database initialized and test user seeded.";
 		books = GetBooks();
 	}
 }
