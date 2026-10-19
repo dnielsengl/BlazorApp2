@@ -81,17 +81,31 @@ namespace BlazorApp2
 
                 if (userCount == 0)
                 {
-                    var salt = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
-                    using var pbkdf2 = new System.Security.Cryptography.Rfc2898DeriveBytes("1234", Convert.FromBase64String(salt), 100_000, System.Security.Cryptography.HashAlgorithmName.SHA256);
-                    string hash = Convert.ToBase64String(pbkdf2.GetBytes(32));
+                    // Elev
+                    var salt1 = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+                    using var pbkdf2_1 = new System.Security.Cryptography.Rfc2898DeriveBytes("1234", Convert.FromBase64String(salt1), 100_000, System.Security.Cryptography.HashAlgorithmName.SHA256);
+                    string hash1 = Convert.ToBase64String(pbkdf2_1.GetBytes(32));
 
-                    var seedCommand = connection.CreateCommand();
-                    seedCommand.CommandText = @"
-            INSERT INTO Users (Name, PasswordHash, Salt, Role)
-            VALUES ('elev1', $hash, $salt, 'Elev')";
-                    seedCommand.Parameters.AddWithValue("$hash", hash);
-                    seedCommand.Parameters.AddWithValue("$salt", salt);
-                    seedCommand.ExecuteNonQuery();
+                    var seedCommand1 = connection.CreateCommand();
+                    seedCommand1.CommandText = @"
+        INSERT INTO Users (Name, PasswordHash, Salt, Role)
+        VALUES ('elev1', $hash, $salt, 'Elev')";
+                    seedCommand1.Parameters.AddWithValue("$hash", hash1);
+                    seedCommand1.Parameters.AddWithValue("$salt", salt1);
+                    seedCommand1.ExecuteNonQuery();
+
+                    // Bibliotekar
+                    var salt2 = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+                    using var pbkdf2_2 = new System.Security.Cryptography.Rfc2898DeriveBytes("admin123", Convert.FromBase64String(salt2), 100_000, System.Security.Cryptography.HashAlgorithmName.SHA256);
+                    string hash2 = Convert.ToBase64String(pbkdf2_2.GetBytes(32));
+
+                    var seedCommand2 = connection.CreateCommand();
+                    seedCommand2.CommandText = @"
+        INSERT INTO Users (Name, PasswordHash, Salt, Role)
+        VALUES ('biblo1', $hash, $salt, 'Bibliotekar')";
+                    seedCommand2.Parameters.AddWithValue("$hash", hash2);
+                    seedCommand2.Parameters.AddWithValue("$salt", salt2);
+                    seedCommand2.ExecuteNonQuery();
                 }
             }
 

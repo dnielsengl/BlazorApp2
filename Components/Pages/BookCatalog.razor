@@ -11,12 +11,16 @@
 
 <p style="color: @(isError ? "red" : "black")">@statusmessage</p>
 
-<EditForm Model="newBook" OnSubmit="HandleAdd">
-	<InputText @bind-Value="newBook.Title" placeholder="Title" />
-	<InputText @bind-Value="newBook.Author" placeholder="Author" />
-	<InputNumber @bind-Value="newBook.Total" placeholder="Total" />
-	<button type="submit">Add Book</button>
-</EditForm>
+<AuthorizeView Roles="Bibliotekar" Context="bibContext">
+	<Authorized>
+		<EditForm Model="newBook" OnSubmit="HandleAdd">
+			<InputText @bind-Value="newBook.Title" placeholder="Title" />
+			<InputText @bind-Value="newBook.Author" placeholder="Author" />
+			<InputNumber @bind-Value="newBook.Total" placeholder="Total" />
+			<button type="submit">Add Book</button>
+		</EditForm>
+	</Authorized>
+</AuthorizeView>
 
 <table>
 	<thead>
@@ -41,7 +45,6 @@
 		}
 	</tbody>
 </table>
-
 @code {
 
 	private string statusmessage = "Initializing database...";
@@ -155,41 +158,10 @@
 
 	private List<Book> books = new List<Book>();
 
-	private void seedtestuser()
-	{
-		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
-		connection.Open();
-
-		var countCommand = connection.CreateCommand();
-		countCommand.CommandText = "SELECT COUNT(*) FROM Users";
-		long count = (long)countCommand.ExecuteScalar();
-
-		if (count > 0)
-		{
-			return; // Der findes allerede brugere, spring seedingen over
-		}
-
-		var command = connection.CreateCommand();
-		command.CommandText = @"
-        INSERT INTO Users (Name, PasswordHash, Salt, Role)
-        VALUES ($name, $passwordHash, $salt, $role)";
-
-		string salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
-		string passwordHash = HashPassword("1234", salt);
-
-		command.Parameters.AddWithValue("$name", "elev1");
-		command.Parameters.AddWithValue("$passwordHash", passwordHash);
-		command.Parameters.AddWithValue("$salt", salt);
-		command.Parameters.AddWithValue("$role", "Elev");
-
-		command.ExecuteNonQuery();
-	}
-
 	protected override void OnInitialized()
 	{
 		InitializeDatabase();
 		Users();
-		seedtestuser();
 		statusmessage = "Database initialized and test user seeded.";
 		books = GetBooks();
 	}
