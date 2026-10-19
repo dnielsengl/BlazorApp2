@@ -66,7 +66,33 @@
         }
     </tbody>
 </table>
-
+<AuthorizeView Roles="Bibliotekar" Context="allLoansContext">
+    <Authorized>
+        <h4>All Active Loans</h4>
+        @if (allLoans.Count == 0)
+        {
+            <p>No active loans.</p>
+        }
+        else
+        {
+            <table>
+                <thead>
+                    <tr><th>Book</th><th>Borrower</th><th>Borrowed At</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var loan in allLoans)
+                    {
+                        <tr>
+                            <td>@loan.Title</td>
+                            <td>@loan.Username</td>
+                            <td>@loan.BorrowedAt</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </Authorized>
+</AuthorizeView>
 <AuthorizeView Roles="Elev" Context="myLoansContext">
     <Authorized>
         <h4>My Borrowed Books</h4>
@@ -223,6 +249,27 @@
         return loans;
     }
 
+    private List<(string Title, string Username, string BorrowedAt)> GetAllActiveLoans()
+    {
+        var loans = new List<(string, string, string)>();
+        using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+        connection.Open();
+        var command = connection.CreateCommand();
+        command.CommandText = @"
+        SELECT Books.Title, Loans.Username, Loans.BorrowedAt
+        FROM Loans
+        JOIN Books ON Books.Id = Loans.BookId
+        WHERE Loans.ReturnedAt IS NULL";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            loans.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+        }
+        return loans;
+    }
+
+    private List<(string Title, string Username, string BorrowedAt)> allLoans = new();
+
     private void ReturnBook(int loanId, int bookId)
     {
         using var connection = new SqliteConnection("Data Source=bookcatalog.db");
@@ -321,5 +368,6 @@
         statusmessage = "Database initialized and test user seeded.";
         books = GetBooks();
         await LoadMyLoans();
+        allLoans = GetAllActiveLoans();
     }
 }
