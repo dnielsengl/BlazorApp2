@@ -1,9 +1,42 @@
 ﻿@page "/bookcatalog"
+@rendermode InteractiveServer
 @using Microsoft.Data.Sqlite
+@using BlazorApp2.Data
 
 <h3>BookCatalog</h3>
 
-<p>@statusmessage</p>
+<p style="color: @(isError ? "red" : "black")">@statusmessage</p>
+
+<EditForm Model="newBook" OnSubmit="HandleAdd">
+	<InputText @bind-Value="newBook.Title" placeholder="Title" />
+	<InputText @bind-Value="newBook.Author" placeholder="Author" />
+	<InputNumber @bind-Value="newBook.Total" placeholder="Total" />
+	<button type="submit">Add Book</button>
+</EditForm>
+
+<table>
+	<thead>
+		<tr>
+			<th>Id</th>
+			<th>Title</th>
+			<th>Author</th>
+			<th>Total</th>
+			<th>Available</th>
+		</tr>
+	</thead>
+	<tbody>
+		@foreach (var book in books)
+		{
+			<tr>
+				<td>@book.Id</td>
+				<td>@book.Title</td>
+				<td>@book.Author</td>
+				<td>@book.Total</td>
+				<td>@book.Available</td>
+			</tr>
+		}
+	</tbody>
+</table>
 
 @code {
 	private string statusmessage = "Initializing database...";
@@ -26,9 +59,71 @@
 		statusmessage = "Database initialized.";
 	}
 
+	private void AddBook(string title, string author, int total, int available)
+	{
+		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+		connection.Open();
+		var command = connection.CreateCommand();
+		command.CommandText = @"
+			INSERT INTO Books (Title, Author, Total, Available)
+			VALUES ($title, $author, $total, $available)";
+		command.Parameters.AddWithValue("$title", title);
+		command.Parameters.AddWithValue("$author", author);
+		command.Parameters.AddWithValue("$total", total);
+		command.Parameters.AddWithValue("$available", available);
+		command.ExecuteNonQuery();
+	}
+
+	private List<Book> GetBooks()
+	{
+		var books = new List<Book>();
+		using var connection = new SqliteConnection("Data Source=bookcatalog.db");
+		connection.Open();
+		var command = connection.CreateCommand();
+		command.CommandText = "SELECT Id, Title, Author, Total, Available FROM Books";
+		using var reader = command.ExecuteReader();
+		while (reader.Read())
+		{
+			var book = new Book
+			{
+				Id = reader.GetInt32(0),
+				Title = reader.GetString(1),
+				Author = reader.GetString(2),
+				Total = reader.GetInt32(3),
+				Available = reader.GetInt32(4)
+			};
+			books.Add(book);
+		}
+		return books;
+	}
+	
+	private Book newBook = new Book();
+
+	private bool isError = false;
+
+	private void HandleAdd()
+	{
+		if (!string.IsNullOrWhiteSpace(newBook.Title) && !string.IsNullOrWhiteSpace(newBook.Author) && newBook.Total > 0)
+		{
+			newBook.Available = newBook.Total; // Set available to total when adding a new book
+			AddBook(newBook.Title, newBook.Author, newBook.Total, newBook.Available);
+			books = GetBooks(); // Refresh the list of books
+			newBook = new Book(); // Reset the form
+			statusmessage = "Book added successfully.";
+			isError = false;
+		}
+		else
+		{
+			statusmessage = "ERROR: - Please fill in all fields and ensure Total is greater than 0.";
+			isError = true;
+		}
+	}
+
+	private List<Book> books = new List<Book>();
+
 	protected override void OnInitialized()
 	{
 		InitializeDatabase();
+		books = GetBooks();
 	}
-
 }
